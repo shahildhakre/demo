@@ -1,35 +1,25 @@
-import { Component } from '@angular/core';
-import { Router } from '@angular/router';
-import { AuthService } from '../../services/auth.service';
-
-@Component({
-  selector: 'app-login',
-  templateUrl: './login.component.html',
-  styleUrls: ['./login.component.scss']
-})
-export class LoginComponent {
-  errorMessage: string | null = null;
+errorMessage: string | null = null;
 
   constructor(
     private authService: AuthService,
     private router: Router
   ) { }
 
-  onLoginSubmit(formData: { username: string, password: string }) {
+  onSignupSubmit(formData: { username: string, password: string, confirmPassword: string }) {
     this.errorMessage = null;
     
-    this.authService.login(formData.username, formData.password).subscribe(
-      success => {
-        if (success) {
-          this.router.navigate(['/home']);
-        } else {
-          this.errorMessage = 'Invalid username or password';
-        }
+    if (formData.password !== formData.confirmPassword) {
+      this.errorMessage = 'Passwords do not match';
+      return;
+    }
+    
+    this.authService.signUp(formData.username, formData.password).subscribe(
+      response => {
+        this.router.navigate(['/login']);
       },
       error => {
-        this.errorMessage = 'An error occurred. Please try again.';
+        this.errorMessage = 'An error occurred during signup. Please try again.';
         console.error(error);
       }
     );
   }
-}
