@@ -1,25 +1,127 @@
-errorMessage: string | null = null;
+.auth-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background-color: #f5f5f5;
+}
 
-  constructor(
-    private authService: AuthService,
-    private router: Router
-  ) { }
+.auth-form-container {
+  width: 400px;
+  padding: 30px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
 
-  onSignupSubmit(formData: { username: string, password: string, confirmPassword: string }) {
-    this.errorMessage = null;
-    
-    if (formData.password !== formData.confirmPassword) {
-      this.errorMessage = 'Passwords do not match';
-      return;
-    }
-    
-    this.authService.signUp(formData.username, formData.password).subscribe(
-      response => {
-        this.router.navigate(['/login']);
-      },
-      error => {
-        this.errorMessage = 'An error occurred during signup. Please try again.';
-        console.error(error);
-      }
-    );
+h1, h2 {
+  margin: 0;
+  text-align: center;
+}
+
+h1 {
+  font-size: 20px;
+  color: #333;
+  font-weight: normal;
+  margin-bottom: 5px;
+}
+
+h2 {
+  font-size: 24px;
+  color: #4169E1;
+  margin-bottom: 20px;
+}
+
+.form-type {
+  color: #333;
+  font-size: 16px;
+  margin-bottom: 15px;
+  font-weight: bold;
+}
+
+.form-group {
+  margin-bottom: 15px;
+  position: relative;
+}
+
+label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 14px;
+}
+
+input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.is-invalid {
+  border-color: #ff4d4f;
+}
+
+.required {
+  color: #ff4d4f;
+}
+
+.error-icon {
+  position: absolute;
+  right: 10px;
+  top: 35px;
+  color: white;
+  background-color: #ff4d4f;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.error-message {
+  color: #ff4d4f;
+  margin-top: 10px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20px;
+}
+
+.sign-btn {
+  background-color: #4169E1;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+
+  &:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
   }
+}
+
+.signup-link {
+  font-size: 14px;
+  
+  a {
+    color: #4169E1;
+    text-decoration: none;
+    
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+input::placeholder {
+  color: #ccc;
+}
