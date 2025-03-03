@@ -1,31 +1,35 @@
-<div class="form-group" *ngIf="!isLoginMode">
-        <label for="confirmPassword">Confirm Password <span class="required">*</span></label>
-        <input
-          type="password"
-          id="confirmPassword"
-          formControlName="confirmPassword"
-          placeholder="Confirm Password"
-          [class.is-invalid]="(authForm.get('confirmPassword')?.invalid || authForm.hasError('passwordMismatch')) && 
-            (authForm.get('confirmPassword')?.dirty || authForm.get('confirmPassword')?.touched)"
-        />
-        <div class="error-icon" *ngIf="authForm.hasError('passwordMismatch') && 
-          (authForm.get('confirmPassword')?.dirty || authForm.get('confirmPassword')?.touched)">
-          ✕
-        </div>
-      </div>
+import { Component } from '@angular/core';
+import { Router } from '@angular/router';
+import { AuthService } from '../../services/auth.service';
 
-      <div class="form-actions">
-        <div *ngIf="isLoginMode">
-          <span class="signup-link">Don't have an account? <a routerLink="/signup">Sign Up</a></span>
-        </div>
-        <button type="submit" [disabled]="authForm.invalid" class="sign-btn">
-          {{ isLoginMode ? 'Sign In' : 'Sign Up' }}
-        </button>
-      </div>
-    </form>
+@Component({
+  selector: 'app-login',
+  templateUrl: './login.component.html',
+  styleUrls: ['./login.component.scss']
+})
+export class LoginComponent {
+  errorMessage: string | null = null;
 
-    <div *ngIf="errorMessage" class="error-message">
-      {{ errorMessage }}
-    </div>
-  </div>
-</div>
+  constructor(
+    private authService: AuthService,
+    private router: Router
+  ) { }
+
+  onLoginSubmit(formData: { username: string, password: string }) {
+    this.errorMessage = null;
+    
+    this.authService.login(formData.username, formData.password).subscribe(
+      success => {
+        if (success) {
+          this.router.navigate(['/home']);
+        } else {
+          this.errorMessage = 'Invalid username or password';
+        }
+      },
+      error => {
+        this.errorMessage = 'An error occurred. Please try again.';
+        console.error(error);
+      }
+    );
+  }
+}
