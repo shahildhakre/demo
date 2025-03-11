@@ -104,3 +104,27 @@ def run_generation():
 
 if __name__ == "__main__":
     run_generation()
+
+# Node to create and activate virtual environment
+def setup_virtual_environment(state: GraphState) -> GraphState:
+    try:
+        if not state.project_path:
+            state.errors.append("Project path not set.")
+            return state
+        
+        project_root = Path(state.project_path)
+        venv_path = project_root / "venv"
+        
+        # Create virtual environment
+        subprocess.run(["python", "-m", "venv", str(venv_path)], check=True)
+        
+        # Determine activation command based on OS
+        activate_script = venv_path / "Scripts" / "activate" if os.name == "nt" else venv_path / "bin" / "activate"
+        
+        # Install dependencies
+        subprocess.run([str(venv_path / "bin" / "pip"), "install", "-r", str(project_root / "requirements.txt")], check=True)
+        
+        state.dependencies_installed = True
+    except Exception as e:
+        state.errors.append(f"Error setting up virtual environment: {str(e)}")
+    return state
