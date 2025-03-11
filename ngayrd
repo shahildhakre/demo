@@ -184,3 +184,38 @@ Database Schema Document:
 {DB_SCHEMA_DOCUMENT}
 
 Generate well-structured, high-quality code with clear comments and follow best coding practices."
+
+
+Docker Configuration:
+
+Generate a Dockerfile:
+dockerfile
+Copy
+Edit
+FROM python:3.10
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+Generate a docker-compose.yml:
+yaml
+Copy
+Edit
+version: '3.8'
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+  db:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: my_db
+    ports:
+      - "5432:5432"
