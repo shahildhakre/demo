@@ -1,56 +1,18 @@
 import os
-from typing import Dict, List, Optional, TypedDict
+import shutil
 from pathlib import Path
-
-import langchain
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import UnstructuredFileLoader, PyMuPDFLoader
-from langchain_groq import ChatGroq
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langgraph.graph import END, StateGraph
+from langchain_core.output_parsers import StrOutputParser
+from langgraph.graph import StateGraph, END
+from langchain_groq import ChatGroq
 from pydantic import BaseModel, Field
+from typing import Optional, List
 
-# Define types for our graph state
-class Requirement(TypedDict):
-    id: str
-    description: str
-    type: str  # functional, non-functional, etc.
-
-class APIEndpoint(TypedDict):
-    path: str
-    method: str
-    parameters: List[Dict]
-    response: Dict
-    description: str
-
-class DatabaseTable(TypedDict):
-    name: str
-    fields: List[Dict]
-    relationships: List[Dict]
-    constraints: List[Dict]
-
+# Define the state
 class GraphState(BaseModel):
-    # Input documents
-    srs_document: Optional[List[str]] = Field(default=None)
-    db_schema_image: Optional[str] = Field(default=None)
-    
-    # Extracted information
-    functional_requirements: Optional[List[Requirement]] = Field(default=None)
-    api_endpoints: Optional[List[APIEndpoint]] = Field(default=None)
-    backend_logic: Optional[List[Dict]] = Field(default=None)
-    database_schema: Optional[List[DatabaseTable]] = Field(default=None)
-    auth_requirements: Optional[Dict] = Field(default=None)
-    
-    # Processing flags
-    srs_loaded: bool = Field(default=False)
-    db_schema_loaded: bool = Field(default=False)
-    requirements_extracted: bool = Field(default=False)
-    db_schema_extracted: bool = Field(default=False)
-    analysis_complete: bool = Field(default=False)
-    
-    # Error tracking
+    srs_content: Optional[str] = Field(default=None)
+    project_structure: Optional[dict] = Field(default=None)
+    generation_complete: bool = Field(default=False)
     errors: List[str] = Field(default_factory=list)
 
 # Initialize LLM
@@ -60,308 +22,85 @@ llm = ChatGroq(
     api_key=os.environ.get("GROQ_API_KEY")
 )
 
-# Initialize vision model (for schema image analysis)
-vision_llm = ChatGroq(
-    temperature=0,
-    model_name="llama3-70b-8192-vision",
-    api_key=os.environ.get("GROQ_API_KEY")
-)
-
-# Document loading node
-def load_documents(state: GraphState) -> GraphState:
-    try:
-        # Define paths for document and image
-        srs_path = Path("/uploads/documents")
-        image_path = Path("/uploads/images")
-        
-        # Find any PDF documents in the documents folder
-        pdf_files = list(srs_path.glob("*.pdf"))
-        
-        if not pdf_files:
-            state.errors.append("No SRS document found in upload directory")
-            return state
-        
-        # Load the first PDF document found
-        srs_file = pdf_files[0]
-        loader = PyMuPDFLoader(str(srs_file))
-        docs = loader.load()
-        
-        # Split the document into manageable chunks
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=2000,
-            chunk_overlap=200
-        )
-        split_docs = text_splitter.split_documents(docs)
-        
-        # Extract texts from documents
-        state.srs_document = [doc.page_content for doc in split_docs]
-        state.srs_loaded = True
-        
-        # Find any schema images in the images folder
-        image_files = list(image_path.glob("*.png")) + list(image_path.glob("*.jpg"))
-        
-        if image_files:
-            # Store the path to the first image found
-            state.db_schema_image = str(image_files[0])
-            state.db_schema_loaded = True
-        
-        return state
-    except Exception as e:
-        state.errors.append(f"Error loading documents: {str(e)}")
-        return state
-
-# Requirement extraction node
-def extract_requirements(state: GraphState) -> GraphState:
-    if not state.srs_loaded:
-        state.errors.append("SRS document not loaded yet")
+# Load SRS document
+def load_srs(state: GraphState) -> GraphState:
+    srs_path = Path("srs.txt")
+    if not srs_path.exists():
+        state.errors.append("SRS document not found.")
         return state
     
-    try:
-        # Combine document chunks for processing
-        full_text = "\n\n".join(state.srs_document)
-        
-        # Create a prompt to extract functional requirements
-        requirements_prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="""
-            You are a software requirements analyzer. Extract all functional requirements from the provided SRS document.
-            For each requirement, identify:
-            1. A unique ID
-            2. The full description
-            3. Categorize it as functional, non-functional, or interface requirement
-            
-            Format your response as a JSON list of objects, with each object containing 'id', 'description', and 'type' fields.
-            """),
-            HumanMessage(content=f"Here is the SRS document text:\n\n{full_text}")
-        ])
-        
-        # Extract functional requirements
-        requirements_chain = requirements_prompt | llm | StrOutputParser()
-        requirements_result = requirements_chain.invoke({})
-        
-        # Parse the JSON response (with error handling)
-        import json
-        try:
-            parsed_requirements = json.loads(requirements_result)
-            state.functional_requirements = parsed_requirements
-        except json.JSONDecodeError:
-            # If JSON parsing fails, try to extract requirements more carefully
-            state.errors.append("Could not parse requirements response as JSON")
-            # Store as plain text for now
-            state.functional_requirements = [{"id": "FR-0", "description": requirements_result, "type": "functional"}]
-        
-        # Create a prompt to extract API endpoints
-        api_prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="""
-            You are an API designer. Based on the SRS document, identify all API endpoints that need to be implemented.
-            For each endpoint, specify:
-            1. The path (e.g., /api/users)
-            2. The HTTP method (GET, POST, PUT, DELETE)
-            3. Required parameters (path, query, body)
-            4. Expected response format
-            5. A brief description of what the endpoint does
-            
-            Format your response as a JSON list of objects.
-            """),
-            HumanMessage(content=f"Here is the SRS document text:\n\n{full_text}")
-        ])
-        
-        # Extract API endpoints
-        api_chain = api_prompt | llm | StrOutputParser()
-        api_result = api_chain.invoke({})
-        
-        # Parse the JSON response
-        try:
-            parsed_endpoints = json.loads(api_result)
-            state.api_endpoints = parsed_endpoints
-        except json.JSONDecodeError:
-            state.errors.append("Could not parse API endpoints response as JSON")
-        
-        # Extract backend logic
-        backend_prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="""
-            You are a backend architect. Based on the SRS document, identify all backend logic components needed:
-            1. Business rules
-            2. Required computations
-            3. Data processing workflows
-            4. Integration points with external systems
-            
-            Format your response as a JSON list of objects.
-            """),
-            HumanMessage(content=f"Here is the SRS document text:\n\n{full_text}")
-        ])
-        
-        backend_chain = backend_prompt | llm | StrOutputParser()
-        backend_result = backend_chain.invoke({})
-        
-        # Parse the JSON response
-        try:
-            parsed_backend = json.loads(backend_result)
-            state.backend_logic = parsed_backend
-        except json.JSONDecodeError:
-            state.errors.append("Could not parse backend logic response as JSON")
-        
-        # Extract authentication requirements
-        auth_prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="""
-            You are a security architect. Based on the SRS document, identify all authentication and authorization requirements:
-            1. User roles and permissions
-            2. Authentication methods
-            3. Authorization rules
-            4. Security constraints
-            
-            Format your response as a JSON object.
-            """),
-            HumanMessage(content=f"Here is the SRS document text:\n\n{full_text}")
-        ])
-        
-        auth_chain = auth_prompt | llm | StrOutputParser()
-        auth_result = auth_chain.invoke({})
-        
-        # Parse the JSON response
-        try:
-            parsed_auth = json.loads(auth_result)
-            state.auth_requirements = parsed_auth
-        except json.JSONDecodeError:
-            state.errors.append("Could not parse authentication requirements response as JSON")
-        
-        state.requirements_extracted = True
-        return state
-    except Exception as e:
-        state.errors.append(f"Error extracting requirements: {str(e)}")
-        return state
-
-# Database schema extraction node
-def extract_db_schema(state: GraphState) -> GraphState:
-    if not state.db_schema_loaded:
-        state.errors.append("No database schema image loaded")
-        return state
-    
-    try:
-        # Load the image for vision model
-        with open(state.db_schema_image, "rb") as f:
-            image_data = f.read()
-            image_base64 = base64.b64encode(image_data).decode('utf-8')
-        
-        # Create a prompt to extract database schema from the image
-        schema_prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="""
-            You are a database architect. Analyze the provided database schema diagram and extract:
-            1. All tables with their names
-            2. Fields/columns for each table with data types
-            3. Primary keys, foreign keys, and other constraints
-            4. Relationships between tables
-            
-            Format your response as a JSON list of objects representing database tables.
-            """),
-            HumanMessage(content=[
-                {"type": "text", "text": "Here is a database schema diagram. Extract the complete database schema from it."},
-                {"type": "image_url", "image_url": f"data:image/jpeg;base64,{image_base64}"}
-            ])
-        ])
-        
-        # Extract database schema using vision model
-        schema_chain = schema_prompt | vision_llm | StrOutputParser()
-        schema_result = schema_chain.invoke({})
-        
-        # Parse the JSON response
-        import json
-        try:
-            parsed_schema = json.loads(schema_result)
-            state.database_schema = parsed_schema
-            state.db_schema_extracted = True
-        except json.JSONDecodeError:
-            state.errors.append("Could not parse database schema response as JSON")
-        
-        return state
-    except Exception as e:
-        state.errors.append(f"Error extracting database schema: {str(e)}")
-        return state
-
-# Final analysis summarizer node
-def finalize_analysis(state: GraphState) -> GraphState:
-    if not state.requirements_extracted:
-        state.errors.append("Requirements have not been extracted yet")
-        return state
-    
-    # Check if we have all required components
-    if state.functional_requirements and state.api_endpoints and state.backend_logic:
-        state.analysis_complete = True
+    with open(srs_path, "r") as f:
+        state.srs_content = f.read()
     
     return state
 
-# Define state router based on document loading status
-def router(state: GraphState):
-    if not state.srs_loaded:
-        return "load_documents"
+# Generate project structure
+def generate_structure(state: GraphState) -> GraphState:
+    if not state.srs_content:
+        state.errors.append("No SRS content loaded.")
+        return state
     
-    if not state.requirements_extracted:
-        return "extract_requirements"
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are a software architect. Based on the provided SRS document, define a structured folder layout for a FastAPI project. Return JSON format with directories and files.")
+    ])
     
-    if state.db_schema_loaded and not state.db_schema_extracted:
-        return "extract_db_schema"
+    chain = prompt | llm | StrOutputParser()
+    response = chain.invoke({"srs": state.srs_content})
     
-    if not state.analysis_complete:
-        return "finalize_analysis"
+    import json
+    try:
+        state.project_structure = json.loads(response)
+    except json.JSONDecodeError:
+        state.errors.append("Failed to parse project structure response.")
     
-    return END
+    return state
 
-# Build the LangGraph
-def build_srs_analysis_graph():
-    # Create workflow graph
+# Create project files
+def create_project(state: GraphState) -> GraphState:
+    if not state.project_structure:
+        state.errors.append("No project structure available.")
+        return state
+    
+    base_dir = Path("generated_fastapi_project")
+    if base_dir.exists():
+        shutil.rmtree(base_dir)
+    base_dir.mkdir()
+    
+    for directory, files in state.project_structure.items():
+        dir_path = base_dir / directory
+        dir_path.mkdir(parents=True, exist_ok=True)
+        
+        for file, content in files.items():
+            file_path = dir_path / file
+            with open(file_path, "w") as f:
+                f.write(content)
+    
+    state.generation_complete = True
+    return state
+
+# Build the workflow
+def build_graph():
     workflow = StateGraph(GraphState)
+    workflow.add_node("load_srs", load_srs)
+    workflow.add_node("generate_structure", generate_structure)
+    workflow.add_node("create_project", create_project)
     
-    # Add nodes
-    workflow.add_node("load_documents", load_documents)
-    workflow.add_node("extract_requirements", extract_requirements)
-    workflow.add_node("extract_db_schema", extract_db_schema)
-    workflow.add_node("finalize_analysis", finalize_analysis)
-    
-    # Add edges based on the router
-    workflow.add_conditional_edges("", router)
-    
-    # Connect nodes
-    workflow.add_edge("load_documents", "extract_requirements")
-    workflow.add_edge("extract_requirements", "extract_db_schema")
-    workflow.add_edge("extract_db_schema", "finalize_analysis")
-    workflow.add_edge("finalize_analysis", END)
+    workflow.add_edge("load_srs", "generate_structure")
+    workflow.add_edge("generate_structure", "create_project")
+    workflow.add_edge("create_project", END)
     
     return workflow.compile()
 
-# Function to run the SRS analysis
-def analyze_srs():
-    # Build the graph
-    graph = build_srs_analysis_graph()
-    
-    # Initialize empty state
+# Run the workflow
+def run_generation():
+    graph = build_graph()
     initial_state = GraphState()
-    
-    # Run the graph
     final_state = graph.invoke(initial_state)
     
-    # Return the analysis results
-    return {
-        "functional_requirements": final_state.functional_requirements,
-        "api_endpoints": final_state.api_endpoints,
-        "backend_logic": final_state.backend_logic,
-        "database_schema": final_state.database_schema,
-        "auth_requirements": final_state.auth_requirements,
-        "errors": final_state.errors,
-        "analysis_complete": final_state.analysis_complete
-    }
+    if final_state.errors:
+        print("Errors:", final_state.errors)
+    else:
+        print("Project generated successfully!")
 
-# Example usage
 if __name__ == "__main__":
-    import json
-    
-    # Import the missing base64 module
-    import base64
-    
-    # Ensure environment variable is set
-    if "GROQ_API_KEY" not in os.environ:
-        print("Warning: GROQ_API_KEY environment variable is not set")
-    
-    # Run the analysis
-    results = analyze_srs()
-    
-    # Print the results
-    print(json.dumps(results, indent=2))
+    run_generation()
