@@ -128,3 +128,14 @@ def setup_virtual_environment(state: GraphState) -> GraphState:
     except Exception as e:
         state.errors.append(f"Error setting up virtual environment: {str(e)}")
     return state
+
+try:
+        subprocess.run([
+            "podman", "run", "--name", "my_db", "-d", "-p", "5432:5432",
+            "-e", "POSTGRES_USER=admin", "-e", "POSTGRES_PASSWORD=admin",
+            "-e", "POSTGRES_DB=my_db"
+        ], check=True)
+        state.db_setup = True
+    except Exception as e:
+        state.errors.append(f"Error setting up PostgreSQL database: {str(e)}")
+    return state
