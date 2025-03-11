@@ -139,3 +139,48 @@ try:
     except Exception as e:
         state.errors.append(f"Error setting up PostgreSQL database: {str(e)}")
     return state
+
+"You are an expert software engineer specializing in FastAPI development. Based on the following Software Requirements Specification (SRS) and database schema documents, generate a fully functional FastAPI project. The project should follow best practices for modularity, scalability, and maintainability.
+
+Instructions:
+Project Structure:
+
+Organize the project into a structured folder format including:
+app/ (Main application directory)
+routes/ (API route handlers)
+models/ (SQLAlchemy models)
+schemas/ (Pydantic schemas)
+services/ (Business logic and services)
+config.py (Configuration settings)
+tests/ (Unit and integration tests)
+requirements.txt (List of dependencies)
+README.md (Project documentation)
+docker-compose.yml (Optional: To define a development environment)
+FastAPI Code Generation:
+
+Implement the API routes as defined in the SRS, ensuring RESTful conventions.
+Create SQLAlchemy models and Pydantic schemas based on the database schema.
+Implement services to handle business logic.
+Include dependency injection where necessary for maintainability.
+Testing:
+
+Write detailed unit tests covering all functionalities.
+Include edge cases, error handling, and integration tests.
+Dependencies:
+
+Extract required dependencies from the SRS and database schema.
+Include FastAPI, Uvicorn, SQLAlchemy, and any necessary libraries.
+Save all dependencies in a requirements.txt file.
+Documentation:
+
+Provide a detailed README.md file explaining project setup, usage, API endpoints, and configurations.
+Add docstrings to all functions and classes.
+If applicable, generate OpenAPI documentation using FastAPI’s built-in tools.
+Input Documents:
+SRS Document:
+{SRS_DOCUMENT}
+
+Database Schema Document:
+{DB_SCHEMA_DOCUMENT}
+
+Generate well-structured, high-quality code with clear comments and follow best coding practices."
